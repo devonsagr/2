@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="zh-Hans" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#11161c" />
+    <meta name="description" content="本机 Clash / mihomo 节点质量监控。" />
+    <title>节点监控</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+<!-- THESIS: A local node monitor should read like a night dispatch board, not a generic card grid; the connected signal from current route to history is the product's signature. OWN-WORLD: Deep graphite surfaces, steel text, hairline timetable rules, signal amber for controls, semantic green/orange/red for health only, and tabular measurement type. STORY: The operator sees current health, verifies the actual Clash node, reads a trend, then adjusts or explicitly authorizes routing. FIRST VIEWPORT: A narrow rail anchors identity; the main signal band leads with usable nodes, the route strip follows, the trend spans the workspace, and the node table remains in view. FORM: Railway dispatch board, grounded direction 4, seed 8f06d15c. FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md -->
+    <a class="skip-link" href="#main-content">跳到主内容</a>
+    <svg class="svg-sprite" aria-hidden="true" focusable="false">
+      <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.7-4L3 9m0 0V4m0 5h5M4 13a8 8 0 0 0 14.7 4L21 15m0 0v5m0-5h-5" /></symbol>
+      <symbol id="icon-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7V5Z" /></symbol>
+      <symbol id="icon-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14" /></symbol>
+      <symbol id="icon-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" /></symbol>
+      <symbol id="icon-settings" viewBox="0 0 24 24"><path d="M12 8.2a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6Z" /><path d="m19.4 15 .1.1a1.8 1.8 0 0 1-2.5 2.5l-.1-.1a1.8 1.8 0 0 0-3 .9v.2a1.8 1.8 0 0 1-3.6 0v-.2a1.8 1.8 0 0 0-3-.9l-.1.1a1.8 1.8 0 0 1-2.5-2.5l.1-.1a1.8 1.8 0 0 0-.9-3h-.2a1.8 1.8 0 0 1 0-3h.2a1.8 1.8 0 0 0 .9-3l-.1-.1a1.8 1.8 0 0 1 2.5-2.5l.1.1a1.8 1.8 0 0 0 3-.9v-.2a1.8 1.8 0 0 1 3.6 0v.2a1.8 1.8 0 0 0 3 .9l.1-.1a1.8 1.8 0 0 1 2.5 2.5l-.1.1a1.8 1.8 0 0 0 .9 3h.2a1.8 1.8 0 0 1 0 3h-.2a1.8 1.8 0 0 0-.9 3Z" /></symbol>
+      <symbol id="icon-activity" viewBox="0 0 24 24"><path d="M3 12h4l2.2-7L13 19l2.2-7H21" /></symbol>
+      <symbol id="icon-wifi" viewBox="0 0 24 24"><path d="M3 8.5a14 14 0 0 1 18 0M6 12a9.3 9.3 0 0 1 12 0M9 15.5a4.8 4.8 0 0 1 6 0M12 19h.01" /></symbol>
+      <symbol id="icon-alert" viewBox="0 0 24 24"><path d="M12 4 3.5 19h17L12 4Z" /><path d="M12 9v4m0 3h.01" /></symbol>
+      <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4.2 4L19 7" /></symbol>
+      <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></symbol>
+      <symbol id="icon-minus" viewBox="0 0 24 24"><path d="M5 12h14" /></symbol>
+      <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+      <symbol id="icon-reset" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.6" /><path d="M4 4v4.6h4.6" /></symbol>
+      <symbol id="icon-download" viewBox="0 0 24 24"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14" /></symbol>
+    </svg>
+
+    <div class="app-shell">
+      <aside class="app-rail" aria-label="主导航">
+        <div class="brand-lockup">
+          <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+          <div>
+            <strong>节点监控</strong>
+            <span>Clash / mihomo</span>
+          </div>
+        </div>
+        <nav class="rail-nav">
+          <a class="rail-link is-active" href="#overview"><span class="rail-index">01</span><span>监控概览</span></a>
+          <a class="rail-link" href="#trend"><span class="rail-index">02</span><span>趋势图</span></a>
+          <a class="rail-link" href="#nodes"><span class="rail-index">03</span><span>节点状态</span></a>
+          <a class="rail-link" href="#settings"><span class="rail-index">04</span><span>采样设置</span></a>
+        </nav>
+        <div class="rail-footer">
+          <div class="rail-service-line"><span class="status-dot" data-state="loading"></span><span>本机服务</span><strong id="railServiceStatus">连接中</strong></div>
+          <p>数据只保存在这台电脑</p>
+        </div>
+      </aside>
+
+      <main id="main-content" class="app-main">
+        <header class="topbar">
+          <div class="topbar-title">
+            <h1>节点质量</h1>
+            <span id="topbarMode">等待本轮完整采样</span>
+          </div>
+          <div class="topbar-actions">
+            <div class="last-refresh"><span>最近刷新</span><time id="lastRefresh">—</time></div>
+            <button id="refreshButton" class="button button-primary" type="button" disabled>
+              <svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg><span>立即刷新</span>
+            </button>
+          </div>
+        </header>
+
+        <section id="overview" class="signal-band" aria-labelledby="overview-title">
+          <div class="signal-hero">
+            <div class="section-heading"><h2 id="overview-title">当前健康度</h2><span id="cycleLabel">最近完整采样</span></div>
+            <div class="health-readout">
+              <strong id="healthyCount">—</strong><span>/ <b id="totalCount">—</b></span>
+            </div>
+            <div class="health-track" id="healthTrack" aria-label="可用节点比例"></div>
+            <div class="health-caption"><span id="healthCaption">等待服务</span><span id="availabilityLabel">—</span></div>
+          </div>
+          <div class="signal-metric">
+            <span>平均延迟</span><strong id="averageDelay">—</strong><small>只统计正常响应</small>
+          </div>
+          <div class="signal-metric">
+            <span>异常节点</span><strong id="attentionCount">—</strong><small id="attentionCaption">Timeout / 错误</small>
+          </div>
+          <div class="signal-metric signal-metric-route">
+            <span>Clash 当前节点</span><strong id="summaryCurrentNode">—</strong><small id="summaryCurrentState">等待回读</small>
+          </div>
+        </section>
+
+        <section class="route-strip" aria-labelledby="route-title">
+          <div class="route-strip-title"><span class="signal-line" aria-hidden="true"></span><div><h2 id="route-title">实际出站</h2><span id="routeGroup">—</span></div></div>
+          <div class="route-current"><span>Clash 当前节点</span><strong id="currentNode">—</strong><span id="currentNodeState" class="state-text">等待回读</span></div>
+          <div class="route-decision"><span>最近判定</span><strong id="routeDecision">自动路由关闭，只监控和记录</strong></div>
+          <button id="routeToggle" class="switch-control" type="button" role="switch" aria-checked="false" disabled><span class="switch-track"><span></span></span><span id="routeToggleLabel">开启自动路由</span></button>
+        </section>
+
+        <section id="trend" class="panel chart-panel" aria-labelledby="trend-title">
+          <div class="panel-header chart-header">
+            <div><h2 id="trend-title">24 小时趋势</h2><p id="trendSubtitle">最佳节点的最低可用延迟</p></div>
+            <div class="chart-actions">
+              <div class="segmented" role="group" aria-label="历史范围">
+                <button type="button" data-history-days="1" aria-pressed="true">1 天</button>
+                <button type="button" data-history-days="3" aria-pressed="false">3 天</button>
+                <button type="button" data-history-days="7" aria-pressed="false">7 天</button>
+              </div>
+              <label class="compact-field"><span>趋势对象</span><select id="chartFocus" aria-label="选择趋势对象"><option value="best">最佳节点</option></select></label>
+              <label class="compact-field"><span>聚合</span><select id="chartBucket" aria-label="选择趋势聚合"><option value="1800">30 分钟</option><option value="900">15 分钟</option><option value="300">5 分钟</option><option value="60">1 分钟</option><option value="30">30 秒</option><option value="0">跟随采样</option></select></label>
+              <button id="exportButton" class="button button-quiet" type="button" title="导出当前时间范围的原始采样" disabled><svg class="icon" aria-hidden="true"><use href="#icon-download"></use></svg><span>导出 CSV</span></button>
+              <div class="zoom-control" role="group" aria-label="图表缩放"><button id="zoomOut" type="button" aria-label="缩小时间范围"><svg class="icon" aria-hidden="true"><use href="#icon-minus"></use></svg></button><output id="zoomLabel">1× · 全时段</output><button id="zoomIn" type="button" aria-label="放大时间范围"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg></button><button id="zoomReset" class="zoom-reset" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg><span>重置</span></button></div>
+            </div>
+          </div>
+          <div class="chart-note" role="status" aria-live="polite"><span class="note-mark" data-state="loading"></span><span id="chartNote">正在读取历史数据</span><span class="chart-legend"><i class="legend-line"></i>正常延迟 <i class="legend-threshold"></i>绿色上限 <i class="legend-failure"></i>Timeout / 失败</span></div>
+          <div class="chart-wrap" id="chartWrap">
+            <svg id="trendChart" class="trend-chart" viewBox="0 0 1100 360" role="img" aria-label="节点历史趋势图" tabindex="0"></svg>
+            <div id="chartTooltip" class="chart-tooltip" role="tooltip" hidden></div>
+            <div id="chartEmpty" class="chart-empty" hidden><svg class="empty-icon" aria-hidden="true"><use href="#icon-activity"></use></svg><strong>还没有可显示的采样</strong><span>完成第一轮采样后，趋势会出现在这里。</span></div>
+          </div>
+          <p class="chart-help">普通滚轮浏览页面；按住 Ctrl + 滚轮缩放。放大后可拖动图面，键盘使用 ← →、Home、End 移动时间视窗。导出 CSV 会按当前 1/3/7 天范围带出原始采样，适合交给 AI 分析。</p>
+        </section>
+
+        <section id="nodes" class="panel nodes-panel" aria-labelledby="nodes-title">
+          <div class="panel-header">
+            <div><h2 id="nodes-title">节点状态</h2><p id="nodesSubtitle">等待节点清单</p></div>
+            <label class="compact-field node-filter"><span>显示</span><select id="nodeFilter" aria-label="筛选节点状态"><option value="all">全部节点</option><option value="attention">只看异常</option><option value="current">当前节点</option></select></label>
+          </div>
+          <div class="table-scroll">
+            <table class="node-table">
+              <thead><tr><th scope="col">节点</th><th scope="col">状态</th><th scope="col">延迟</th><th scope="col">采样时间</th><th scope="col">说明</th></tr></thead>
+              <tbody id="nodeTableBody"><tr><td colspan="5" class="table-empty">首轮采样完成后显示每个节点的结果。</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="settings" class="panel settings-panel">
+          <div class="panel-header settings-heading"><div><h2>采样设置</h2><p>调整本机采样和自动路由，不会上传数据。</p></div><button id="loadConfigButton" class="button button-quiet" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg><span>刷新节点清单</span></button></div>
+          <form id="settingsForm" class="settings-form">
+            <div class="settings-grid">
+              <label><span>监控间隔（秒）</span><input id="intervalInput" name="intervalSeconds" type="number" min="15" max="3600" step="15" value="60" /><small>每轮完整采样之间的等待时间</small></label>
+              <label><span>单节点超时（毫秒）</span><input id="timeoutInput" name="timeoutMs" type="number" min="1000" max="30000" step="500" value="5000" /><small>超时会以断点保留在历史图上</small></label>
+              <label class="settings-wide"><span>自动筛选规则</span><input id="patternInput" name="nodePattern" type="text" value="^TW-\d+$" /><small>默认只选 TW 叶子节点；手选节点会优先于此规则</small></label>
+              <label class="settings-wide"><span>延迟探针地址</span><input id="testUrlInput" name="testUrl" type="url" value="http://www.gstatic.com/generate_204" /><small>这是可达性/延迟探针，不代表带宽</small></label>
+            </div>
+            <div class="route-settings">
+              <div class="settings-section-title"><div><h3>自动路由</h3><p>默认关闭；只有明确开启且有绿色候选时才允许改动 Clash 选择。</p></div><label class="checkbox-toggle"><input id="autoRouteInput" type="checkbox" /><span></span><b>允许切换</b></label></div>
+              <div class="settings-grid route-grid">
+                <label><span>监控候选组</span><input id="routeGroupInput" type="text" value="TW自动选择" /><small>URLTest 会自动识别实际出站 Selector</small></label>
+                <label><span>连续异常次数</span><select id="routeAfterInput"><option value="1">1 次</option><option value="2" selected>2 次</option><option value="3">3 次</option><option value="4">4 次</option><option value="5">5 次</option></select><small>橙色延迟达到次数后才切换</small></label>
+                <label><span>切换冷却记录（秒）</span><input id="routeCooldownInput" type="number" min="30" max="3600" step="30" value="300" /><small>只作为说明记录；故障转移不被它拦截</small></label>
+                <label><span>绿色上限（毫秒）</span><input id="warningDelayInput" type="number" min="100" max="10000" step="50" value="800" /><small>不超过此值才算绿色</small></label>
+              </div>
+            </div>
+            <div class="node-picker"><div class="settings-section-title"><div><h3>手动节点清单</h3><p>留空时按筛选规则；勾选后只监控所选节点。</p></div><div class="picker-actions"><button id="selectAllNodes" type="button">全选</button><button id="clearNodes" type="button">按规则</button></div></div><div id="nodePickerList" class="node-picker-list"><span class="muted-copy">打开服务后读取节点清单。</span></div></div>
+            <div class="settings-footer"><span id="settingsStatus">未修改</span><div><button id="pauseButton" class="button button-quiet" type="button" disabled><svg class="icon" aria-hidden="true"><use href="#icon-pause"></use></svg><span>暂停监控</span></button><button id="stopButton" class="button button-danger" type="button" disabled><svg class="icon" aria-hidden="true"><use href="#icon-stop"></use></svg><span>停止程序</span></button><button class="button button-primary" type="submit"><svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg><span>保存设置</span></button></div></div>
+          </form>
+        </section>
+
+        <section id="offlineState" class="offline-state" hidden aria-live="polite"><div class="offline-icon"><svg class="icon" aria-hidden="true"><use href="#icon-wifi"></use></svg></div><div><h2>监控服务不可用</h2><p id="offlineMessage">请先运行 `run_monitor.bat`，再回到此页面。</p></div><button id="retryButton" class="button button-primary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg><span>重新连接</span></button></section>
+        <footer class="app-footer"><span>本机运行 · 默认只监听 127.0.0.1</span><span>延迟探针 ≠ 带宽测速</span></footer>
+      </main>
+    </div>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <script src="./app.js" defer></script>
+  </body>
+</html>

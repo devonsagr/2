@@ -1,0 +1,21 @@
+{
+  "controller": "http://127.0.0.1:9097",
+  "secret": "",
+  "clash_config": "",
+  "interval_seconds": 60,
+  "timeout_ms": 5000,
+  "test_url": "http://www.gstatic.com/generate_204",
+  "node_pattern": "^TW-\\d+$",
+  "workers": 4,
+  "retention_days": 30,
+  "database": "data/tw_monitor.sqlite3",
+  "always_on_top": true,
+  "server_host": "127.0.0.1",
+  "server_port": 17997,
+  "auto_route": false,
+  "route_group": "TW自动选择",
+  "route_after_failures": 2,
+  "route_cooldown_seconds": 300,
+  "warning_delay_ms": 800,
+  "selected_nodes": []
+}
