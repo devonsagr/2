@@ -1,6 +1,9 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+build/
+*.spec
+release/*.log
 data/*.sqlite3
 data/*.sqlite3-*
 monitor_config.json

@@ -1,77 +1,94 @@
-# 节点监控
+# Clash Node Monitor
 
-一个只使用 Python 标准库的 Clash Verge/mihomo 节点监控器。它直接调用 Clash External Controller 的延迟 API，不模拟点击、不依赖 AI 常驻，结果保存在本地 SQLite，并通过同一个 loopback 服务提供独立 Web 控制台。
+Clash/mihomo 的本机节点质量监控工具。它读取 External Controller 的延迟结果，保留真实历史，提供可视化趋势和一键 CSV 导出；默认只在本机运行，不上传监控数据。
 
-## 快速开始
+## 最简单的使用方式
 
-不要直接双击 `web/index.html`：它只是前端资源，直接打开时不会连接本机监控 API。请双击 `run_monitor.bat`，它会启动本机服务并打开独立控制台。当前本机的 Clash Verge 配置会自动发现 `127.0.0.1:9097` 和 API 密钥，通常无需填写密钥：
+1. 确认 Clash 或 mihomo 已启动，并开启 External Controller。
+2. 从 GitHub 的 `release/ClashNodeMonitor.exe` 下载 EXE。
+3. 双击 EXE。它会启动本机服务并自动打开控制台页面。
+4. 页面先自动发现本机控制器；如果发现失败，打开“连接高级设置”，填写控制器地址和 API 密钥，再点击“测试连接”。
+5. 首次使用默认监控所有可识别的叶子节点。需要缩小范围时，可以填写筛选规则或在“手动节点清单”中勾选节点。
 
-```powershell
-py tw_monitor.py --server
-```
+EXE 是完整入口，不需要单独打开 `web/index.html`，也不需要安装 Node.js、数据库或浏览器插件。页面实际运行在本机 loopback 服务上，关闭服务即可停止监控。
 
-脚本启动本机 `127.0.0.1:17997` loopback 服务并立即采样一次，之后默认每 60 秒采样。浏览器打开 <http://127.0.0.1:17997/> 即可使用独立控制台；采样不调用 AI。
+## 从源码运行
 
-这份目录可以脱离 Obsidian 使用。只需要 Windows、Python 3.10+ 和正在运行的 Clash Verge/mihomo External Controller；不需要 Node.js、前端构建工具或云端账号。
-
-趋势图旁的“导出 CSV”会按当前选中的 1/3/7 天范围导出原始采样。文件包含 `sampled_at_local`、`node`、`status`、`delay_ms`、`request_ms` 和 `error` 等字段，适合直接交给 AI 做稳定性、超时分布和节点对比分析；图表聚合设置只影响展示，不会减少导出的原始行。
-
-需要桌面浮点入口时，在服务已经运行的前提下另开：
+需要 Windows、Python 3.10 或更高版本，以及正在运行的 Clash/mihomo External Controller：
 
 ```powershell
-py tw_monitor.py --floating
+py clash_node_monitor.py --server --open-browser
 ```
 
-浮点是可拖动的小圆点，点击打开当天趋势，右键关闭；它不会再启动第二套采样线程。`run_monitor.bat` 会用 `pythonw` 静默启动服务并打开浏览器控制台。
+浏览器打开 <http://127.0.0.1:17997/>。也可以双击 `run_monitor.bat`；它会优先使用 `release/ClashNodeMonitor.exe`，没有 EXE 时才回退到 Python。
 
-单次实测（适合先验收）：
+其他入口：
 
 ```powershell
-py tw_monitor.py --once
+py clash_node_monitor.py --once       # 只做一次采样
+py clash_node_monitor.py --no-ui      # 无界面常驻
+py clash_node_monitor.py --floating   # 服务已运行时打开桌面浮点
 ```
 
-无界面常驻（兼容任务计划；Obsidian 卡片推荐使用 `--server`）：
+## 如何连接 Clash
 
-```powershell
-py tw_monitor.py --no-ui
-```
+软件不会模拟点击 Clash 界面，而是使用 Clash/mihomo 的 External Controller API。启动后按以下顺序尝试：
 
-若希望每 30 秒采样：
+- 读取本机常见配置中的 `external-controller` 和 `secret`。
+- 使用页面中的“测试连接”验证控制器和节点清单。
+- 自动发现失败时，在“连接高级设置”填写类似 `http://127.0.0.1:9097` 的控制器地址；有密钥就填写 API 密钥，没有密钥则留空。
+- 点击“保存设置”后，地址和其它采样设置会保存在本机配置文件；密钥只在用户明确填写或清除时更新。
 
-```powershell
-py tw_monitor.py --interval 30
-```
+如果仍然连接不上，请检查 Clash/mihomo 是否启用了 External Controller、端口是否正确，以及控制器是否允许本机访问。软件不会替用户修改 Clash 配置。
+
+## 趋势与 AI 分析
+
+趋势图支持 1/3/7 天窗口和展示聚合。点击“导出 CSV”会导出当前时间范围内的原始采样，不会因为图表聚合而丢数据。文件包含：
+
+- `sampled_at_local`：本地采样时间
+- `node`：节点名称
+- `status`：正常、超时或失败
+- `delay_ms`：延迟（毫秒）
+- `request_ms`：请求耗时（毫秒）
+- `error`：错误摘要（如有）
+
+导出的 UTF-8 CSV 可以直接交给 AI，适合分析可用率、超时分布、延迟趋势和节点之间的稳定性差异。
 
 ## 配置
 
-复制 `monitor_config.example.json` 为同目录的 `monitor_config.json` 后按需修改。真实配置已加入 `.gitignore`，不要把 `secret` 提交到 Git。
+复制 `monitor_config.example.json` 为同目录的 `monitor_config.json` 后按需修改。常用字段：
 
-常用项：
+- `controller` / `secret`：External Controller 地址和 API 密钥
+- `interval_seconds`：采样间隔，默认 60 秒
+- `timeout_ms`：单节点超时，默认 5000 毫秒
+- `node_pattern`：节点名称正则，默认 `.*`
+- `selected_nodes`：可选，填写后只监控指定节点
+- `test_url`：延迟探针地址
+- `server_host` / `server_port`：本机 Web 服务地址，默认 `127.0.0.1:17997`
+- `auto_route`：自动路由开关，默认关闭
 
-- `interval_seconds`：周期，默认 60；可设 30。
-- `timeout_ms`：单节点 API 超时，默认 5000。
-- `node_pattern`：节点名称正则，默认只匹配 `TW-1`～`TW-10`。
-- `test_url`：延迟探针地址。
-- `retention_days`：本地历史保留天数，默认 30。
-- `selected_nodes`：可选；填写后优先于正则筛选。
-- `server_host` / `server_port`：loopback API，默认 `127.0.0.1:17997`。
-- `auto_route`：自动路由开关，默认 `false`；只有在用户显式开启后才允许调用 Clash 的 PUT 选择接口。
-- `route_group`：Clash Selector/URLTest 路由组，默认 `TW自动选择`。
-- `route_after_failures`：当前节点连续异常次数，默认 2。
-- `route_cooldown_seconds`：成功切换后的冷却时间，默认 300 秒。
-- `warning_delay_ms`：绿色延迟上限，默认 800ms；超过此值为橙色候选，不会被自动选中。
+也支持 `CLASH_SECRET` 和 `CLASH_CONFIG_PATH` 环境变量。SQLite 历史保存在 `data/node_monitor.sqlite3`，不会进入 Git。
 
-也支持 `CLASH_SECRET` 和 `CLASH_CONFIG_PATH` 环境变量覆盖自动发现结果。
+## 构建 Windows EXE
 
-## 数据与边界
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build_exe.ps1
+```
 
-数据文件为 `data/tw_monitor.sqlite3`，不会上传。默认只观察和记录，不会选择节点、修改 Clash 配置或自动切换网络。启用自动路由后也只在完整采样周期结束、当前节点连续异常且存在同组绿色候选时切换；绿色的第二名不会被替换。需求分层和验收标准见 [`docs/需求沉淀.md`](docs/需求沉淀.md)，独立 Web 结构和 API 边界见 [`docs/架构说明.md`](docs/架构说明.md)。
+构建脚本会安装/使用 PyInstaller，把 `web/` 一起打入 `release/ClashNodeMonitor.exe`。发布前不要把 `monitor_config.json`、API 密钥或 `data/` 数据库放进仓库。
 
-公开使用时只分发源码、`web/`、配置模板和启动脚本；不要分发本机的 `monitor_config.json`、API 密钥或 `data/tw_monitor.sqlite3`。
+## 产品资料
+
+- [公开名称与 About 文案建议](PUBLIC_PROFILE.md)
+- [产品合同](PRODUCT.md)
+- [设计合同](DESIGN.md)
+- [架构说明](docs/架构说明.md)
+- [需求与验收](docs/需求沉淀.md)
+- [当前路线图](路线图.md)
 
 ## 验证
 
 ```powershell
-py -m py_compile tw_monitor.py
+py -m py_compile clash_node_monitor.py
 py -m unittest discover -s tests -v
 ```

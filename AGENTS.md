@@ -1,33 +1,30 @@
-# 独立节点网络监控项目约定
+# Clash Node Monitor 项目约定
 
-## 项目映射
+## 项目范围
 
-- 本地工程：`D:\AAAcodex项目\网络监控独立版`
-- Git：`main` 分支；远程仓库为 `https://github.com/devonsagr/2.git`
-- 本地权威文档根：`docs/`，产品与设计合同为根目录 `PRODUCT.md`、`DESIGN.md`
-- 当前路线图：`路线图.md`
-- 当前交接：`当前交接.md`
-- 需求保真记录：`docs/需求沉淀.md`
-- 设计基线：`.ui-craft/brief.md`
-- 视觉参考：`docs/视觉方向.md` 与 `docs/视觉参考/节点监控-参考图-v1.png`
-- Obsidian 镜像：未声明，不同步
+- 这是一个可独立分发的 Windows 本地软件：Python 本地服务、原生 Web 控制台和可选的桌面浮点入口。
+- 运行时只通过 Clash/mihomo External Controller 读取节点状态；默认只绑定本机回环地址。
+- 公开仓库不得包含真实配置、API 密钥、SQLite 数据库、缓存、用户路径或内部项目名称。
 
 ## 运行与验证
 
-- loopback 服务（独立 Web 控制台）：`py tw_monitor.py --server`
-- 桌面浮点（先确保服务已运行）：`py tw_monitor.py --floating`
-- 兼容旧式完整 Tk 窗口：`py tw_monitor.py --window`
-- 单次实测：`py tw_monitor.py --once`
-- 无界面常驻：`py tw_monitor.py --no-ui`
+- 源码控制台：`py clash_node_monitor.py --server --open-browser`
+- 单次采样：`py clash_node_monitor.py --once`
+- 无界面常驻：`py clash_node_monitor.py --no-ui`
 - 单元测试：`py -m unittest discover -s tests -v`
-- 语法检查：`py -m py_compile tw_monitor.py`
+- 语法检查：`py -m py_compile clash_node_monitor.py`
+- 构建 EXE：`powershell -ExecutionPolicy Bypass -File .\build_exe.ps1`
 
-## 安全边界
+## 发布边界
 
-- 只读取 Clash Verge 的本地控制器配置和 API，不上传数据；自动路由默认关闭，只有用户在卡片中显式开启且满足连续异常、绿色候选和冷却条件时才调用 Clash 选择接口。
-- API 密钥不写入仓库；优先从 Clash 配置或 `CLASH_SECRET` 环境变量读取，也可在本地未跟踪的 `monitor_config.json` 中配置。
-- 监控数据只落在本地 `data/tw_monitor.sqlite3`，该文件不提交 Git。
-- `web/` 由 Python loopback 服务同源提供，不依赖 Node.js、打包器或第三方 CDN。
-- 发布包不得包含真实 `monitor_config.json`、API 密钥、SQLite 数据库或缓存目录。
-- 默认只匹配 `TW-1`～`TW-10` 这类叶子节点，排除 URLTest、LoadBalance 等策略组。
-- 默认路由组为 `TW自动选择`；当前节点绿色时即使不是延迟第一名也保持不变，路由动作只写入本地 `route_events`。
+- `run_monitor.bat` 优先启动 `release/ClashNodeMonitor.exe`；没有 EXE 时回退到本机 Python。
+- EXE 使用 PyInstaller 把 `web/` 静态资源一起打包，启动后自动打开本地控制台。
+- 公开配置模板只能使用示例地址和空密钥；真实配置文件由用户在本机生成并被 `.gitignore` 忽略。
+- 浅色/深色主题、连接引导和 CSV 导出属于公开产品能力，修改时要同步更新 README 与架构文档。
+
+## 安全与数据
+
+- 监控数据只保存到用户本机 `data/node_monitor.sqlite3`，不会上传或调用云端服务。
+- API 密钥只能留在本机配置或运行时内存，不得打印、提交或放入前端响应。
+- 自动路由默认关闭；只有用户明确开启并满足安全条件时才允许调用 Clash 选择接口。
+- 任何新功能都必须保持单一采样服务，避免打开多个页面时重复采样。

@@ -7,32 +7,36 @@ import urllib.request
 from datetime import date
 from pathlib import Path
 
-import tw_monitor
+import clash_node_monitor
 
 
-class TwMonitorTests(unittest.TestCase):
+class ClashNodeMonitorTests(unittest.TestCase):
     @staticmethod
     def _route_service(directory: str, **overrides):
         values = {
             "database": Path(directory) / "route.sqlite3",
             "auto_route": True,
-            "route_group": "TW自动选择",
+            "route_group": "自动选择",
             "route_after_failures": 2,
             "route_cooldown_seconds": 30,
             "warning_delay_ms": 800,
         }
         values.update(overrides)
-        return tw_monitor.MonitorService(tw_monitor.Settings(**values))
+        return clash_node_monitor.MonitorService(clash_node_monitor.Settings(**values))
 
     def test_select_nodes_excludes_strategy_groups(self):
         proxies = {
-            "TW-1": {"name": "TW-1", "type": "Tuic"},
-            "TW-2": {"name": "TW-2", "type": "Tuic"},
-            "TW自动选择": {"name": "TW自动选择", "type": "URLTest"},
-            "TW负载均衡": {"name": "TW负载均衡", "type": "LoadBalance"},
+            "Node-1": {"name": "Node-1", "type": "Tuic"},
+            "Node-2": {"name": "Node-2", "type": "Tuic"},
+            "自动选择": {"name": "自动选择", "type": "URLTest"},
+            "负载均衡": {"name": "负载均衡", "type": "LoadBalance"},
+            "DIRECT": {"name": "DIRECT", "type": "Direct"},
+            "COMPATIBLE": {"name": "COMPATIBLE", "type": "Compatible"},
             "JP-1": {"name": "JP-1", "type": "Tuic"},
         }
-        self.assertEqual(tw_monitor.select_nodes(proxies, r"^TW"), ["TW-1", "TW-2"])
+        self.assertEqual(clash_node_monitor.select_nodes(proxies, r"^Node-"), ["Node-1", "Node-2"])
+        self.assertNotIn("DIRECT", clash_node_monitor.leaf_nodes(proxies))
+        self.assertNotIn("COMPATIBLE", clash_node_monitor.leaf_nodes(proxies))
 
     def test_parse_clash_config_reads_only_controller_fields(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -42,28 +46,28 @@ class TwMonitorTests(unittest.TestCase):
                 encoding="utf-8",
             )
             self.assertEqual(
-                tw_monitor.parse_clash_config(path),
+                clash_node_monitor.parse_clash_config(path),
                 {"external-controller": "127.0.0.1:9097", "secret": "test-secret"},
             )
 
     def test_store_writes_latest_and_daily_rows(self):
         with tempfile.TemporaryDirectory() as directory:
-            store = tw_monitor.Store(Path(directory) / "monitor.sqlite3", retention_days=30)
+            store = clash_node_monitor.Store(Path(directory) / "monitor.sqlite3", retention_days=30)
             now = int(time.time())
-            result = tw_monitor.CycleResult(
+            result = clash_node_monitor.CycleResult(
                 started_at=now,
                 finished_at=now + 2,
-                discovered_nodes=["TW-1", "TW-2"],
+                discovered_nodes=["Node-1", "Node-2"],
                 measurements=[
-                    tw_monitor.Measurement("TW-1", now + 1, "ok", delay_ms=123),
-                    tw_monitor.Measurement("TW-2", now + 1, "timeout", error="API timeout"),
+                    clash_node_monitor.Measurement("Node-1", now + 1, "ok", delay_ms=123),
+                    clash_node_monitor.Measurement("Node-2", now + 1, "timeout", error="API timeout"),
                 ],
                 message="1 个节点需要关注",
             )
             store.write_cycle(result)
             latest = {row["node"]: row for row in store.latest_results()}
-            self.assertEqual(latest["TW-1"]["delay_ms"], 123)
-            self.assertEqual(latest["TW-2"]["status"], "timeout")
+            self.assertEqual(latest["Node-1"]["delay_ms"], 123)
+            self.assertEqual(latest["Node-2"]["status"], "timeout")
             self.assertEqual(store.last_cycle()["status"], "degraded")
 
     def test_load_settings_uses_json_overrides(self):
@@ -74,13 +78,13 @@ class TwMonitorTests(unittest.TestCase):
                     {
                         "controller": "127.0.0.1:9999",
                         "interval_seconds": 30,
-                        "node_pattern": "^TW-\\d+$",
+                        "node_pattern": "^Node-\\d+$",
                         "database": str(Path(directory) / "data.sqlite3"),
                     }
                 ),
                 encoding="utf-8",
             )
-            settings = tw_monitor.load_settings(config)
+            settings = clash_node_monitor.load_settings(config)
             self.assertEqual(settings.controller, "http://127.0.0.1:9999")
             self.assertEqual(settings.interval_seconds, 30)
             self.assertEqual(settings.database, Path(directory) / "data.sqlite3")
@@ -88,27 +92,27 @@ class TwMonitorTests(unittest.TestCase):
     def test_aggregate_day_samples_marks_mixed_bucket_as_degraded(self):
         start = 1_700_000_000
         rows = [
-            {"sampled_at": start + 10, "node": "TW-1", "status": "ok", "delay_ms": 100},
-            {"sampled_at": start + 20, "node": "TW-1", "status": "timeout", "delay_ms": None},
+            {"sampled_at": start + 10, "node": "Node-1", "status": "ok", "delay_ms": 100},
+            {"sampled_at": start + 20, "node": "Node-1", "status": "timeout", "delay_ms": None},
         ]
-        grouped = tw_monitor._aggregate_day_samples(rows, start)
-        self.assertEqual(grouped["TW-1"][0]["status"], "degraded")
-        self.assertEqual(grouped["TW-1"][0]["delay_ms"], 100)
+        grouped = clash_node_monitor._aggregate_day_samples(rows, start)
+        self.assertEqual(grouped["Node-1"][0]["status"], "degraded")
+        self.assertEqual(grouped["Node-1"][0]["delay_ms"], 100)
 
     def test_aggregate_day_samples_accepts_one_minute_buckets(self):
         start = 1_700_000_000
         rows = [
-            {"sampled_at": start + 10, "node": "TW-1", "status": "ok", "delay_ms": 100},
-            {"sampled_at": start + 70, "node": "TW-1", "status": "ok", "delay_ms": 120},
+            {"sampled_at": start + 10, "node": "Node-1", "status": "ok", "delay_ms": 100},
+            {"sampled_at": start + 70, "node": "Node-1", "status": "ok", "delay_ms": 120},
         ]
-        grouped = tw_monitor._aggregate_day_samples(rows, start, bucket_seconds=60)
-        self.assertEqual([point["timestamp"] for point in grouped["TW-1"]], [start + 30, start + 90])
-        self.assertEqual([point["delay_ms"] for point in grouped["TW-1"]], [100, 120])
+        grouped = clash_node_monitor._aggregate_day_samples(rows, start, bucket_seconds=60)
+        self.assertEqual([point["timestamp"] for point in grouped["Node-1"]], [start + 30, start + 90])
+        self.assertEqual([point["delay_ms"] for point in grouped["Node-1"]], [100, 120])
 
     def test_history_payload_exposes_requested_bucket(self):
         with tempfile.TemporaryDirectory() as directory:
-            runtime = tw_monitor.MonitorRuntime(
-                tw_monitor.Settings(database=Path(directory) / "history.sqlite3"),
+            runtime = clash_node_monitor.MonitorRuntime(
+                clash_node_monitor.Settings(database=Path(directory) / "history.sqlite3"),
                 Path(directory) / "monitor_config.json",
             )
             try:
@@ -119,28 +123,28 @@ class TwMonitorTests(unittest.TestCase):
 
     def test_route_context_uses_default_match_selector_for_nested_urltest(self):
         proxies = {
-            "TW自动选择": {
-                "name": "TW自动选择",
+            "自动选择": {
+                "name": "自动选择",
                 "type": "URLTest",
-                "now": "TW-1",
-                "all": ["TW-1", "TW-2", "TW-3"],
+                "now": "Node-1",
+                "all": ["Node-1", "Node-2", "Node-3"],
             },
-            "主代理": {
-                "name": "主代理",
+            "默认选择": {
+                "name": "默认选择",
                 "type": "Selector",
-                "now": "TW-3",
-                "all": ["TW自动选择", "TW-1", "TW-2", "TW-3"],
+                "now": "Node-3",
+                "all": ["自动选择", "Node-1", "Node-2", "Node-3"],
             },
         }
-        context = tw_monitor.resolve_route_context(
+        context = clash_node_monitor.resolve_route_context(
             proxies,
-            [{"type": "MATCH", "proxy": "主代理"}],
-            "TW自动选择",
+            [{"type": "MATCH", "proxy": "默认选择"}],
+            "自动选择",
         )
-        self.assertEqual(context.control_group, "主代理")
-        self.assertEqual(context.current_node, "TW-3")
-        self.assertEqual(context.path, ("主代理",))
-        self.assertEqual(context.allowed_members, ("TW-1", "TW-2", "TW-3"))
+        self.assertEqual(context.control_group, "默认选择")
+        self.assertEqual(context.current_node, "Node-3")
+        self.assertEqual(context.path, ("默认选择",))
+        self.assertEqual(context.allowed_members, ("Node-1", "Node-2", "Node-3"))
 
     def test_auto_route_keeps_green_current_node_even_when_ranked_second(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -149,14 +153,14 @@ class TwMonitorTests(unittest.TestCase):
 
             class FakeClient:
                 def get_route_context(self, _group, timeout_seconds=6.0):
-                    return tw_monitor.RouteContext(
-                        "TW自动选择",
+                    return clash_node_monitor.RouteContext(
+                        "自动选择",
                         "urltest",
-                        "主代理",
+                        "默认选择",
                         "selector",
-                        "TW-2",
-                        ("TW-1", "TW-2", "TW-3"),
-                        ("主代理",),
+                        "Node-2",
+                        ("Node-1", "Node-2", "Node-3"),
+                        ("默认选择",),
                     )
 
                 def set_proxy(self, group, node):
@@ -164,14 +168,14 @@ class TwMonitorTests(unittest.TestCase):
 
             service.client = FakeClient()
             try:
-                result = tw_monitor.CycleResult(
+                result = clash_node_monitor.CycleResult(
                     started_at=1,
                     finished_at=2,
-                    discovered_nodes=["TW-1", "TW-2", "TW-3"],
+                    discovered_nodes=["Node-1", "Node-2", "Node-3"],
                     measurements=[
-                        tw_monitor.Measurement("TW-1", 2, "ok", delay_ms=80),
-                        tw_monitor.Measurement("TW-2", 2, "ok", delay_ms=300),
-                        tw_monitor.Measurement("TW-3", 2, "ok", delay_ms=90),
+                        clash_node_monitor.Measurement("Node-1", 2, "ok", delay_ms=80),
+                        clash_node_monitor.Measurement("Node-2", 2, "ok", delay_ms=300),
+                        clash_node_monitor.Measurement("Node-3", 2, "ok", delay_ms=90),
                     ],
                 )
                 service._maybe_route(result)
@@ -185,22 +189,22 @@ class TwMonitorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             service = self._route_service(directory)
             calls = []
-            current = ["TW-1"]
+            current = ["Node-1"]
 
             class FakeClient:
                 def get_route_context(self, _group, timeout_seconds=6.0):
-                    return tw_monitor.RouteContext(
-                        "TW自动选择",
+                    return clash_node_monitor.RouteContext(
+                        "自动选择",
                         "urltest",
-                        "主代理",
+                        "默认选择",
                         "selector",
                         current[0],
-                        ("TW-1", "TW-2", "TW-3"),
-                        ("主代理",),
+                        ("Node-1", "Node-2", "Node-3"),
+                        ("默认选择",),
                     )
 
                 def get_proxy(self, _group):
-                    return {"name": "主代理", "type": "Selector", "now": current[0]}
+                    return {"name": "默认选择", "type": "Selector", "now": current[0]}
 
                 def set_proxy(self, group, node):
                     calls.append((group, node))
@@ -208,22 +212,22 @@ class TwMonitorTests(unittest.TestCase):
 
             service.client = FakeClient()
             measurements = [
-                tw_monitor.Measurement("TW-1", 2, "ok", delay_ms=1200),
-                tw_monitor.Measurement("TW-2", 2, "ok", delay_ms=240),
-                tw_monitor.Measurement("TW-3", 2, "ok", delay_ms=120),
+                clash_node_monitor.Measurement("Node-1", 2, "ok", delay_ms=1200),
+                clash_node_monitor.Measurement("Node-2", 2, "ok", delay_ms=240),
+                clash_node_monitor.Measurement("Node-3", 2, "ok", delay_ms=120),
             ]
             try:
-                first = tw_monitor.CycleResult(1, 2, ["TW-1", "TW-2", "TW-3"], measurements)
+                first = clash_node_monitor.CycleResult(1, 2, ["Node-1", "Node-2", "Node-3"], measurements)
                 service._maybe_route(first)
                 self.assertEqual(first.route_action, "waiting")
                 self.assertEqual(calls, [])
 
-                second = tw_monitor.CycleResult(2, 3, ["TW-1", "TW-2", "TW-3"], measurements)
+                second = clash_node_monitor.CycleResult(2, 3, ["Node-1", "Node-2", "Node-3"], measurements)
                 service._maybe_route(second)
                 self.assertEqual(second.route_action, "switched")
-                self.assertEqual(second.route_from, "TW-1")
-                self.assertEqual(second.route_to, "TW-3")
-                self.assertEqual(calls, [("主代理", "TW-3")])
+                self.assertEqual(second.route_from, "Node-1")
+                self.assertEqual(second.route_to, "Node-3")
+                self.assertEqual(calls, [("默认选择", "Node-3")])
             finally:
                 service.stop()
 
@@ -231,22 +235,22 @@ class TwMonitorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             service = self._route_service(directory, route_after_failures=2)
             calls = []
-            current = ["TW-1"]
+            current = ["Node-1"]
 
             class FakeClient:
                 def get_route_context(self, _group, timeout_seconds=6.0):
-                    return tw_monitor.RouteContext(
-                        "TW自动选择",
+                    return clash_node_monitor.RouteContext(
+                        "自动选择",
                         "urltest",
-                        "主代理",
+                        "默认选择",
                         "selector",
                         current[0],
-                        ("TW-1", "TW-2"),
-                        ("主代理",),
+                        ("Node-1", "Node-2"),
+                        ("默认选择",),
                     )
 
                 def get_proxy(self, _group):
-                    return {"name": "主代理", "type": "Selector", "now": current[0]}
+                    return {"name": "默认选择", "type": "Selector", "now": current[0]}
 
                 def set_proxy(self, group, node):
                     calls.append((group, node))
@@ -254,20 +258,20 @@ class TwMonitorTests(unittest.TestCase):
 
             service.client = FakeClient()
             try:
-                result = tw_monitor.CycleResult(
+                result = clash_node_monitor.CycleResult(
                     1,
                     2,
-                    ["TW-1", "TW-2"],
+                    ["Node-1", "Node-2"],
                     [
-                        tw_monitor.Measurement("TW-1", 2, "timeout"),
-                        tw_monitor.Measurement("TW-2", 2, "ok", delay_ms=120),
+                        clash_node_monitor.Measurement("Node-1", 2, "timeout"),
+                        clash_node_monitor.Measurement("Node-2", 2, "ok", delay_ms=120),
                     ],
                 )
                 service._maybe_route(result)
                 self.assertEqual(result.route_action, "switched")
-                self.assertEqual(result.route_from, "TW-1")
-                self.assertEqual(result.route_to, "TW-2")
-                self.assertEqual(calls, [("主代理", "TW-2")])
+                self.assertEqual(result.route_from, "Node-1")
+                self.assertEqual(result.route_to, "Node-2")
+                self.assertEqual(calls, [("默认选择", "Node-2")])
                 self.assertIn("断线/错误", result.route_message)
             finally:
                 service.stop()
@@ -276,23 +280,23 @@ class TwMonitorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             service = self._route_service(directory, route_after_failures=1, route_cooldown_seconds=3600)
             calls = []
-            current = ["TW-1"]
+            current = ["Node-1"]
             service._last_route_at = int(time.time())
 
             class FakeClient:
                 def get_route_context(self, _group, timeout_seconds=6.0):
-                    return tw_monitor.RouteContext(
-                        "TW自动选择",
+                    return clash_node_monitor.RouteContext(
+                        "自动选择",
                         "urltest",
-                        "主代理",
+                        "默认选择",
                         "selector",
                         current[0],
-                        ("TW-1", "TW-2"),
-                        ("主代理",),
+                        ("Node-1", "Node-2"),
+                        ("默认选择",),
                     )
 
                 def get_proxy(self, _group):
-                    return {"name": "主代理", "type": "Selector", "now": current[0]}
+                    return {"name": "默认选择", "type": "Selector", "now": current[0]}
 
                 def set_proxy(self, group, node):
                     calls.append((group, node))
@@ -300,19 +304,19 @@ class TwMonitorTests(unittest.TestCase):
 
             service.client = FakeClient()
             try:
-                result = tw_monitor.CycleResult(
+                result = clash_node_monitor.CycleResult(
                     1,
                     2,
-                    ["TW-1", "TW-2"],
+                    ["Node-1", "Node-2"],
                     [
-                        tw_monitor.Measurement("TW-1", 2, "timeout"),
-                        tw_monitor.Measurement("TW-2", 2, "ok", delay_ms=120),
+                        clash_node_monitor.Measurement("Node-1", 2, "timeout"),
+                        clash_node_monitor.Measurement("Node-2", 2, "ok", delay_ms=120),
                     ],
                 )
                 service._maybe_route(result)
                 self.assertEqual(result.route_action, "switched")
-                self.assertEqual(result.route_to, "TW-2")
-                self.assertEqual(calls, [("主代理", "TW-2")])
+                self.assertEqual(result.route_to, "Node-2")
+                self.assertEqual(calls, [("默认选择", "Node-2")])
                 self.assertIn("故障转移已跳过冷却", result.route_message)
             finally:
                 service.stop()
@@ -321,23 +325,23 @@ class TwMonitorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             service = self._route_service(directory, route_after_failures=1, route_cooldown_seconds=3600)
             calls = []
-            current = ["TW-1"]
+            current = ["Node-1"]
             service._last_route_at = int(time.time())
 
             class FakeClient:
                 def get_route_context(self, _group, timeout_seconds=6.0):
-                    return tw_monitor.RouteContext(
-                        "TW自动选择",
+                    return clash_node_monitor.RouteContext(
+                        "自动选择",
                         "urltest",
-                        "主代理",
+                        "默认选择",
                         "selector",
                         current[0],
-                        ("TW-1", "TW-2"),
-                        ("主代理",),
+                        ("Node-1", "Node-2"),
+                        ("默认选择",),
                     )
 
                 def get_proxy(self, _group):
-                    return {"name": "主代理", "type": "Selector", "now": current[0]}
+                    return {"name": "默认选择", "type": "Selector", "now": current[0]}
 
                 def set_proxy(self, group, node):
                     calls.append((group, node))
@@ -345,19 +349,19 @@ class TwMonitorTests(unittest.TestCase):
 
             service.client = FakeClient()
             try:
-                result = tw_monitor.CycleResult(
+                result = clash_node_monitor.CycleResult(
                     1,
                     2,
-                    ["TW-1", "TW-2"],
+                    ["Node-1", "Node-2"],
                     [
-                        tw_monitor.Measurement("TW-1", 2, "ok", delay_ms=1200),
-                        tw_monitor.Measurement("TW-2", 2, "ok", delay_ms=120),
+                        clash_node_monitor.Measurement("Node-1", 2, "ok", delay_ms=1200),
+                        clash_node_monitor.Measurement("Node-2", 2, "ok", delay_ms=120),
                     ],
                 )
                 service._maybe_route(result)
                 self.assertEqual(result.route_action, "switched")
-                self.assertEqual(result.route_to, "TW-2")
-                self.assertEqual(calls, [("主代理", "TW-2")])
+                self.assertEqual(result.route_to, "Node-2")
+                self.assertEqual(calls, [("默认选择", "Node-2")])
                 self.assertIn("橙色延迟", result.route_message)
                 self.assertIn("故障转移已跳过冷却", result.route_message)
             finally:
@@ -370,14 +374,14 @@ class TwMonitorTests(unittest.TestCase):
 
             class FakeClient:
                 def get_route_context(self, _group, timeout_seconds=6.0):
-                    return tw_monitor.RouteContext(
-                        "TW自动选择",
+                    return clash_node_monitor.RouteContext(
+                        "自动选择",
                         "urltest",
-                        "主代理",
+                        "默认选择",
                         "selector",
-                        "TW-1",
-                        ("TW-1", "TW-2"),
-                        ("主代理",),
+                        "Node-1",
+                        ("Node-1", "Node-2"),
+                        ("默认选择",),
                     )
 
                 def set_proxy(self, group, node):
@@ -385,13 +389,13 @@ class TwMonitorTests(unittest.TestCase):
 
             service.client = FakeClient()
             try:
-                result = tw_monitor.CycleResult(
+                result = clash_node_monitor.CycleResult(
                     1,
                     2,
-                    ["TW-1", "TW-2"],
+                    ["Node-1", "Node-2"],
                     [
-                        tw_monitor.Measurement("TW-1", 2, "timeout"),
-                        tw_monitor.Measurement("TW-2", 2, "ok", delay_ms=1200),
+                        clash_node_monitor.Measurement("Node-1", 2, "timeout"),
+                        clash_node_monitor.Measurement("Node-2", 2, "ok", delay_ms=1200),
                     ],
                 )
                 service._maybe_route(result)
@@ -405,21 +409,21 @@ class TwMonitorTests(unittest.TestCase):
             service = self._route_service(directory, route_after_failures=1)
             calls = []
             contexts = [
-                tw_monitor.RouteContext(
-                    "TW自动选择", "urltest", "主代理", "selector", "TW-1",
-                    ("TW-1", "TW-2", "TW-3"), ("主代理",),
+                clash_node_monitor.RouteContext(
+                    "自动选择", "urltest", "默认选择", "selector", "Node-1",
+                    ("Node-1", "Node-2", "Node-3"), ("默认选择",),
                 ),
-                tw_monitor.RouteContext(
-                    "TW自动选择", "urltest", "主代理", "selector", "TW-2",
-                    ("TW-1", "TW-2", "TW-3"), ("主代理",),
+                clash_node_monitor.RouteContext(
+                    "自动选择", "urltest", "默认选择", "selector", "Node-2",
+                    ("Node-1", "Node-2", "Node-3"), ("默认选择",),
                 ),
             ]
 
             class FakeClient:
                 def get_route_context(self, _group, timeout_seconds=6.0):
-                    return contexts.pop(0) if contexts else tw_monitor.RouteContext(
-                        "TW自动选择", "urltest", "主代理", "selector", "TW-2",
-                        ("TW-1", "TW-2", "TW-3"), ("主代理",),
+                    return contexts.pop(0) if contexts else clash_node_monitor.RouteContext(
+                        "自动选择", "urltest", "默认选择", "selector", "Node-2",
+                        ("Node-1", "Node-2", "Node-3"), ("默认选择",),
                     )
 
                 def set_proxy(self, group, node):
@@ -427,31 +431,31 @@ class TwMonitorTests(unittest.TestCase):
 
             service.client = FakeClient()
             try:
-                result = tw_monitor.CycleResult(
+                result = clash_node_monitor.CycleResult(
                     1,
                     2,
-                    ["TW-1", "TW-2", "TW-3"],
+                    ["Node-1", "Node-2", "Node-3"],
                     [
-                        tw_monitor.Measurement("TW-1", 2, "ok", delay_ms=1200),
-                        tw_monitor.Measurement("TW-2", 2, "ok", delay_ms=240),
-                        tw_monitor.Measurement("TW-3", 2, "ok", delay_ms=120),
+                        clash_node_monitor.Measurement("Node-1", 2, "ok", delay_ms=1200),
+                        clash_node_monitor.Measurement("Node-2", 2, "ok", delay_ms=240),
+                        clash_node_monitor.Measurement("Node-3", 2, "ok", delay_ms=120),
                     ],
                 )
                 service._maybe_route(result)
                 self.assertEqual(result.route_action, "waiting")
                 self.assertEqual(calls, [])
-                self.assertIn("外部改为 TW-2", result.route_message)
+                self.assertIn("外部改为 Node-2", result.route_message)
             finally:
                 service.stop()
 
     def test_status_reads_current_clash_node_even_while_sampling_is_paused(self):
         with tempfile.TemporaryDirectory() as directory:
-            settings = tw_monitor.Settings(
+            settings = clash_node_monitor.Settings(
                 database=Path(directory) / "status.sqlite3",
                 auto_route=True,
-                route_group="TW自动选择",
+                route_group="自动选择",
             )
-            runtime = tw_monitor.MonitorRuntime(settings, Path(directory) / "monitor_config.json")
+            runtime = clash_node_monitor.MonitorRuntime(settings, Path(directory) / "monitor_config.json")
             calls = []
 
             class FakeClient:
@@ -460,14 +464,14 @@ class TwMonitorTests(unittest.TestCase):
 
                 def get_route_context(self, group, timeout_seconds=6.0):
                     calls.append((group, timeout_seconds))
-                    return tw_monitor.RouteContext(
+                    return clash_node_monitor.RouteContext(
                         group,
                         "urltest",
-                        "主代理",
+                        "默认选择",
                         "selector",
-                        "TW-5",
-                        ("TW-1", "TW-5"),
-                        ("主代理",),
+                        "Node-5",
+                        ("Node-1", "Node-5"),
+                        ("默认选择",),
                     )
 
             runtime.service.client = FakeClient(settings)
@@ -476,26 +480,26 @@ class TwMonitorTests(unittest.TestCase):
                 first = runtime.status_payload()
                 second = runtime.status_payload()
                 self.assertTrue(first["monitor"]["paused"])
-                self.assertEqual(first["routing"]["currentNode"], "TW-5")
+                self.assertEqual(first["routing"]["currentNode"], "Node-5")
                 self.assertEqual(
                     first["routing"]["lastMessage"],
-                    "已与 Clash 同步：实际出站组 主代理 当前节点 TW-5（监控组 TW自动选择）",
+                    "已与 Clash 同步：实际出站组 默认选择 当前节点 Node-5（监控组 自动选择）",
                 )
-                self.assertEqual(second["routing"]["currentNode"], "TW-5")
-                self.assertEqual(calls, [("TW自动选择", 1.5)])
+                self.assertEqual(second["routing"]["currentNode"], "Node-5")
+                self.assertEqual(calls, [("自动选择", 1.5)])
             finally:
                 runtime.stop()
 
     def test_loopback_server_rejects_a_second_monitor_on_the_same_port(self):
         with tempfile.TemporaryDirectory() as directory:
-            settings = tw_monitor.Settings(database=Path(directory) / "singleton.sqlite3")
-            first_runtime = tw_monitor.MonitorRuntime(settings, Path(directory) / "monitor_config.json")
-            first_server = tw_monitor.MonitorApiServer(("127.0.0.1", 0), first_runtime)
-            second_runtime = tw_monitor.MonitorRuntime(settings, Path(directory) / "monitor_config.json")
+            settings = clash_node_monitor.Settings(database=Path(directory) / "singleton.sqlite3")
+            first_runtime = clash_node_monitor.MonitorRuntime(settings, Path(directory) / "monitor_config.json")
+            first_server = clash_node_monitor.MonitorApiServer(("127.0.0.1", 0), first_runtime)
+            second_runtime = clash_node_monitor.MonitorRuntime(settings, Path(directory) / "monitor_config.json")
             try:
                 port = first_server.server_address[1]
                 with self.assertRaises(OSError):
-                    tw_monitor.MonitorApiServer(("127.0.0.1", port), second_runtime)
+                    clash_node_monitor.MonitorApiServer(("127.0.0.1", port), second_runtime)
             finally:
                 first_server.server_close()
                 first_runtime.stop()
@@ -503,9 +507,9 @@ class TwMonitorTests(unittest.TestCase):
 
     def test_loopback_server_serves_standalone_web_ui(self):
         with tempfile.TemporaryDirectory() as directory:
-            settings = tw_monitor.Settings(database=Path(directory) / "web.sqlite3")
-            runtime = tw_monitor.MonitorRuntime(settings, Path(directory) / "monitor_config.json")
-            server = tw_monitor.MonitorApiServer(("127.0.0.1", 0), runtime)
+            settings = clash_node_monitor.Settings(database=Path(directory) / "web.sqlite3")
+            runtime = clash_node_monitor.MonitorRuntime(settings, Path(directory) / "monitor_config.json")
+            server = clash_node_monitor.MonitorApiServer(("127.0.0.1", 0), runtime)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             try:
@@ -525,21 +529,21 @@ class TwMonitorTests(unittest.TestCase):
 
     def test_loopback_server_exports_raw_samples_as_csv(self):
         with tempfile.TemporaryDirectory() as directory:
-            settings = tw_monitor.Settings(database=Path(directory) / "export.sqlite3")
-            runtime = tw_monitor.MonitorRuntime(settings, Path(directory) / "monitor_config.json")
+            settings = clash_node_monitor.Settings(database=Path(directory) / "export.sqlite3")
+            runtime = clash_node_monitor.MonitorRuntime(settings, Path(directory) / "monitor_config.json")
             now = int(time.time())
             runtime.service.store.write_cycle(
-                tw_monitor.CycleResult(
+                clash_node_monitor.CycleResult(
                     started_at=now,
                     finished_at=now + 1,
-                    discovered_nodes=["TW-1", "TW-2"],
+                    discovered_nodes=["Node-1", "Node-2"],
                     measurements=[
-                        tw_monitor.Measurement("TW-1", now, "ok", delay_ms=123, request_ms=140),
-                        tw_monitor.Measurement("TW-2", now, "timeout", error="API timeout"),
+                        clash_node_monitor.Measurement("Node-1", now, "ok", delay_ms=123, request_ms=140),
+                        clash_node_monitor.Measurement("Node-2", now, "timeout", error="API timeout"),
                     ],
                 )
             )
-            server = tw_monitor.MonitorApiServer(("127.0.0.1", 0), runtime)
+            server = clash_node_monitor.MonitorApiServer(("127.0.0.1", 0), runtime)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             try:
@@ -550,8 +554,8 @@ class TwMonitorTests(unittest.TestCase):
                     self.assertIn("text/csv", response.headers.get("Content-Type", ""))
                     self.assertEqual(response.headers.get("X-Export-Row-Count"), "2")
                     self.assertIn("sampled_at_epoch,sampled_at_local", body)
-                    self.assertIn("TW-1,ok,123,140", body)
-                    self.assertIn("TW-2,timeout,,0,API timeout", body)
+                    self.assertIn("Node-1,ok,123,140", body)
+                    self.assertIn("Node-2,timeout,,0,API timeout", body)
             finally:
                 server.shutdown()
                 server.server_close()

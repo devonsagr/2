@@ -1,10 +1,12 @@
 @echo off
 cd /d "%~dp0"
+if exist "%~dp0release\ClashNodeMonitor.exe" (
+  start "" "%~dp0release\ClashNodeMonitor.exe" --server --open-browser
+  exit /b 0
+)
 where pyw >nul 2>&1
 if errorlevel 1 (
-  start "" /min pythonw.exe "%~dp0tw_monitor.py" --server
+  start "" /min pythonw.exe "%~dp0clash_node_monitor.py" --server --open-browser
 ) else (
-  start "" /min pyw.exe "%~dp0tw_monitor.py" --server
+  start "" /min pyw.exe "%~dp0clash_node_monitor.py" --server --open-browser
 )
-timeout /t 1 /nobreak >nul
-start "" "http://127.0.0.1:17997/"

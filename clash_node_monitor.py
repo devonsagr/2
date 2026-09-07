@@ -1,4 +1,4 @@
-"""Lightweight Clash Verge/mihomo TW node monitor.
+"""Lightweight Clash Verge/mihomo node monitor.
 
 The program intentionally uses only the Python standard library.  It talks to
 Clash's local External Controller instead of clicking the Clash Verge UI, so
@@ -26,6 +26,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import webbrowser
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time as datetime_time, timedelta
@@ -33,17 +34,18 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 
-APP_DIR = Path(__file__).resolve().parent
-WEB_ROOT = APP_DIR / "web"
+APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+RESOURCE_ROOT = Path(getattr(sys, "_MEIPASS", APP_DIR))
+WEB_ROOT = RESOURCE_ROOT / "web"
 DEFAULT_CONFIG_PATH = APP_DIR / "monitor_config.json"
-DEFAULT_DATABASE_PATH = APP_DIR / "data" / "tw_monitor.sqlite3"
+DEFAULT_DATABASE_PATH = APP_DIR / "data" / "node_monitor.sqlite3"
 DEFAULT_CONTROLLER = "http://127.0.0.1:9097"
-DEFAULT_PATTERN = r"^TW-\d+$"
+DEFAULT_PATTERN = r".*"
 DEFAULT_TEST_URL = "http://www.gstatic.com/generate_204"
 DEFAULT_SERVER_HOST = "127.0.0.1"
 DEFAULT_SERVER_PORT = 17997
-API_VERSION = "tw-monitor-api-v1"
-DEFAULT_ROUTE_GROUP = "TW自动选择"
+API_VERSION = "clash-node-monitor-api-v1"
+DEFAULT_ROUTE_GROUP = ""
 
 STATIC_MIME_TYPES = {
     ".css": "text/css; charset=utf-8",
@@ -64,6 +66,29 @@ GROUP_TYPES = {
     "relay",
     "smart",
     "load-balance-urltest",
+}
+
+# Clash exposes several selectable control entries alongside real proxy
+# leaves. They are useful to the Clash UI but are not meaningful latency
+# targets for a node monitor.
+NON_MONITORABLE_TYPES = {
+    "direct",
+    "reject",
+    "reject-drop",
+    "rejectdrop",
+    "pass",
+    "pass-rule",
+    "compatible",
+    "dns",
+}
+NON_MONITORABLE_NAMES = {
+    "DIRECT",
+    "REJECT",
+    "REJECT-DROP",
+    "PASS",
+    "PASS-RULE",
+    "COMPATIBLE",
+    "DNS",
 }
 
 
@@ -227,7 +252,7 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
                 if isinstance(item, str) and item.strip()
             )
         )[:128]
-    route_group = str(raw.get("route_group") or DEFAULT_ROUTE_GROUP).strip()[:120] or DEFAULT_ROUTE_GROUP
+    route_group = str(raw.get("route_group") or DEFAULT_ROUTE_GROUP).strip()[:120]
     return Settings(
         controller=_normalise_controller(str(controller_value)),
         secret=str(secret_value).strip(),
@@ -257,6 +282,15 @@ def natural_node_key(name: str) -> Tuple[Any, ...]:
 
 def _normalise_proxy_type(value: Any) -> str:
     return str(value or "").lower().replace(" ", "").replace("_", "-")
+
+
+def _is_monitorable_leaf(name: str, proxy_type: str) -> bool:
+    return (
+        bool(name)
+        and proxy_type not in GROUP_TYPES
+        and proxy_type not in NON_MONITORABLE_TYPES
+        and name.strip().upper() not in NON_MONITORABLE_NAMES
+    )
 
 
 def _proxy_group_map(proxies: Mapping[str, Any]) -> Dict[str, Mapping[str, Any]]:
@@ -309,7 +343,7 @@ def resolve_route_context(
 ) -> RouteContext:
     """Resolve a monitor group to the Selector used by Clash's active rules.
 
-    A URLTest group such as ``TW自动选择`` reports its own ``now`` value, but
+    A URLTest group such as ``自动选择`` reports its own ``now`` value, but
     it is not necessarily the group that the default ``MATCH`` rule sends
     traffic through.  Writing to that nested group can therefore leave the
     user's real outbound Selector unchanged.  Prefer the Selector referenced
@@ -396,7 +430,7 @@ def resolve_route_context(
 
 
 def leaf_nodes(proxies: Mapping[str, Any]) -> List[str]:
-    """Return every selectable proxy, including non-TW nodes for configuration."""
+    """Return every selectable proxy, including non-nodes for configuration."""
 
     nodes: List[str] = []
     for key, proxy in proxies.items():
@@ -404,7 +438,7 @@ def leaf_nodes(proxies: Mapping[str, Any]) -> List[str]:
             continue
         name = str(proxy.get("name") or key).strip()
         proxy_type = _normalise_proxy_type(proxy.get("type"))
-        if name and proxy_type not in GROUP_TYPES:
+        if _is_monitorable_leaf(name, proxy_type):
             nodes.append(name)
     return sorted(set(nodes), key=natural_node_key)
 
@@ -422,7 +456,7 @@ def select_nodes(
             continue
         name = str(proxy.get("name") or key)
         proxy_type = _normalise_proxy_type(proxy.get("type"))
-        if proxy_type not in GROUP_TYPES and ((selected and name in selected) or (not selected and compiled.search(name))):
+        if _is_monitorable_leaf(name, proxy_type) and ((selected and name in selected) or (not selected and compiled.search(name))):
             nodes.append(name)
     return sorted(set(nodes), key=natural_node_key)
 
@@ -889,7 +923,7 @@ class MonitorService:
         self.callback = callback
         self.client = ClashClient(settings)
         self.store = Store(settings.database, settings.retention_days)
-        self.executor = ThreadPoolExecutor(max_workers=settings.workers, thread_name_prefix="tw-check")
+        self.executor = ThreadPoolExecutor(max_workers=settings.workers, thread_name_prefix="node-check")
         self.stop_event = threading.Event()
         self.wake_event = threading.Event()
         self._state_lock = threading.Lock()
@@ -1034,7 +1068,7 @@ class MonitorService:
         if self.thread and self.thread.is_alive():
             return
         self.stop_event.clear()
-        self.thread = threading.Thread(target=self._loop, name="tw-monitor", daemon=True)
+        self.thread = threading.Thread(target=self._loop, name="clash-node-monitor", daemon=True)
         self.thread.start()
 
     def _loop(self) -> None:
@@ -1463,7 +1497,7 @@ def _aggregate_day_samples(
 
 
 def _settings_payload(settings: Settings) -> Dict[str, Any]:
-    """Expose only dashboard-safe settings; the Clash secret never leaves the process."""
+    """Expose dashboard-safe settings; the controller secret never leaves the process."""
 
     return {
         "intervalSeconds": settings.interval_seconds,
@@ -1472,6 +1506,7 @@ def _settings_payload(settings: Settings) -> Dict[str, Any]:
         "nodePattern": settings.node_pattern,
         "selectedNodes": list(settings.selected_nodes),
         "controller": settings.controller,
+        "hasSecret": bool(settings.secret),
         "serverPort": settings.server_port,
         "autoRoute": settings.auto_route,
         "routeGroup": settings.route_group,
@@ -1602,7 +1637,7 @@ def _normalise_selected_nodes(value: Any, fallback: Sequence[str]) -> Tuple[str,
 
 
 class MonitorRuntime:
-    """Own the sampler and the small loopback API used by the Obsidian card."""
+    """Own the sampler and the small loopback API used by the local dashboard."""
 
     def __init__(self, settings: Settings, config_path: Path) -> None:
         self.config_path = config_path
@@ -1702,6 +1737,26 @@ class MonitorRuntime:
     def request_refresh(self) -> bool:
         return self.service.request_refresh()
 
+    def test_connection(self, patch: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+        """Probe Clash with temporary connection values without saving them."""
+
+        current = self.service.settings_snapshot()
+        values = dict(patch or {})
+        controller = _normalise_controller(str(values.get("controller") or current.controller))
+        secret = current.secret
+        if str(values.get("secret") or "").strip():
+            secret = str(values["secret"]).strip()
+        candidate = replace(current, controller=controller, secret=secret)
+        nodes = ClashClient(candidate).list_available_nodes()
+        return {
+            "ok": True,
+            "controller": controller,
+            "hasSecret": bool(secret),
+            "nodeCount": len(nodes),
+            "availableNodes": nodes,
+            "message": f"已连接，发现 {len(nodes)} 个可用节点",
+        }
+
     def set_paused(self, paused: bool) -> None:
         self.service.set_paused(paused)
 
@@ -1719,15 +1774,30 @@ class MonitorRuntime:
             1000,
             30000,
         )
+        controller = _normalise_controller(str(patch.get("controller") or current.controller))
+        secret = current.secret
+        secret_changed = False
+        if patch.get("clearSecret") is True:
+            secret = ""
+            secret_changed = True
+        elif str(patch.get("secret") or "").strip():
+            secret = str(patch["secret"]).strip()
+            secret_changed = True
+        route_group = str(patch.get("routeGroup") if "routeGroup" in patch else current.route_group).strip()[:120]
+        auto_route = patch.get("autoRoute") if isinstance(patch.get("autoRoute"), bool) else current.auto_route
+        if auto_route and not route_group:
+            auto_route = False
         next_settings = replace(
             current,
+            controller=controller,
+            secret=secret,
             interval_seconds=interval,
             timeout_ms=timeout_ms,
             test_url=_valid_test_url(patch.get("testUrl"), current.test_url),
             node_pattern=_valid_pattern(patch.get("nodePattern"), current.node_pattern),
             selected_nodes=_normalise_selected_nodes(patch.get("selectedNodes"), current.selected_nodes),
-            auto_route=patch.get("autoRoute") if isinstance(patch.get("autoRoute"), bool) else current.auto_route,
-            route_group=(str(patch.get("routeGroup") or current.route_group).strip()[:120] or current.route_group),
+            auto_route=auto_route,
+            route_group=route_group,
             route_after_failures=_positive_int(
                 patch.get("routeAfterFailures"),
                 current.route_after_failures,
@@ -1748,7 +1818,7 @@ class MonitorRuntime:
             ),
         )
         with self._config_lock:
-            self._persist_runtime_settings(next_settings)
+            self._persist_runtime_settings(next_settings, persist_secret=secret_changed)
         self.service.update_settings(next_settings)
         if next_settings.auto_route:
             # Refresh the controller-side selection immediately after enabling
@@ -1756,7 +1826,7 @@ class MonitorRuntime:
             self.service.refresh_route_state(force=True)
         return self.config_payload(refresh_nodes=False)
 
-    def _persist_runtime_settings(self, settings: Settings) -> None:
+    def _persist_runtime_settings(self, settings: Settings, persist_secret: bool = False) -> None:
         raw: Dict[str, Any] = {}
         if self.config_path.is_file():
             try:
@@ -1786,6 +1856,8 @@ class MonitorRuntime:
                 "warning_delay_ms": settings.warning_delay_ms,
             }
         )
+        if persist_secret:
+            raw["secret"] = settings.secret
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.config_path.with_suffix(self.config_path.suffix + ".tmp")
         temporary.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -1901,7 +1973,7 @@ class MonitorApiHandler(BaseHTTPRequestHandler):
             raw_days = query.get("days", ["1"])[0]
             days = _positive_int(raw_days, 1, 1, 7)
             body, row_count, start_date, end_date = self.server.runtime.export_csv(days)
-            filename = f"tw-monitor-{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}.csv"
+            filename = f"clash-node-monitor-{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}.csv"
             self._send_csv(body, filename, row_count)
             return
         if not parsed.path.startswith("/api/") and self._send_static(parsed.path):
@@ -1935,16 +2007,24 @@ class MonitorApiHandler(BaseHTTPRequestHandler):
             payload = self.server.runtime.update_settings(self._read_json())
             self._send_json(200, payload)
             return
+        if parsed.path == "/api/connection-test":
+            try:
+                payload = self.server.runtime.test_connection(self._read_json())
+            except ClashApiError as exc:
+                self._send_json(502, {"ok": False, "message": _short_error(str(exc))})
+                return
+            self._send_json(200, payload)
+            return
         if parsed.path == "/api/shutdown":
             self._send_json(202, {"ok": True, "message": "监控程序正在关闭"})
-            threading.Thread(target=self.server.shutdown, name="tw-api-shutdown", daemon=True).start()
+            threading.Thread(target=self.server.shutdown, name="monitor-api-shutdown", daemon=True).start()
             return
         self._send_json(404, {"ok": False, "message": "Not Found"})
 
 
 class MonitorApiServer(ThreadingHTTPServer):
     # Windows permits several SO_REUSEADDR listeners on the same port. That
-    # made multiple Obsidian windows launch independent samplers and requests
+    # made multiple dashboard windows launch independent samplers and requests
     # land on a random stale process. The monitor must be one process per port.
     allow_reuse_address = False
     daemon_threads = True
@@ -1959,11 +2039,16 @@ class MonitorApiServer(ThreadingHTTPServer):
         super().server_bind()
 
 
-def run_server(settings: Settings, config_path: Path, port: Optional[int] = None) -> int:
+def run_server(settings: Settings, config_path: Path, port: Optional[int] = None, open_browser: bool = False) -> int:
     runtime = MonitorRuntime(settings, config_path)
     bind_port = port or settings.server_port
     server = MonitorApiServer((settings.server_host, bind_port), runtime)
     runtime.start()
+    if open_browser:
+        threading.Timer(
+            0.8,
+            lambda: webbrowser.open(f"http://{settings.server_host}:{bind_port}/"),
+        ).start()
     try:
         server.serve_forever(poll_interval=0.5)
     except KeyboardInterrupt:
@@ -2514,7 +2599,7 @@ class FloatingLauncher:
         color = self.COLORS.get(state, self.COLORS["offline"])
         self.canvas.create_oval(5, 5, 51, 51, fill=self.COLORS["background"], outline=self.COLORS["ring"], width=1)
         self.canvas.create_oval(9, 9, 47, 47, fill=color, outline="")
-        self.canvas.create_text(28, 28, text="TW", fill=self.COLORS["text"], font=("Segoe UI", 9, "bold"))
+        self.canvas.create_text(28, 28, text="NM", fill=self.COLORS["text"], font=("Segoe UI", 9, "bold"))
 
     def _begin_drag(self, event: Any) -> None:
         self.drag_origin = (event.x_root, event.y_root, self.root.winfo_x(), self.root.winfo_y())
@@ -2746,6 +2831,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--once", action="store_true", help="只采样一次并退出")
     parser.add_argument("--no-ui", action="store_true", help="无界面常驻运行")
     parser.add_argument("--server", action="store_true", help=f"启动 loopback API 服务（默认端口 {DEFAULT_SERVER_PORT}）")
+    parser.add_argument("--open-browser", action="store_true", help="启动服务后打开本机控制台")
     parser.add_argument("--port", type=int, help="覆盖 loopback API 端口")
     parser.add_argument("--floating", action="store_true", help="显示可拖动的桌面监控小圆点")
     parser.add_argument("--window", action="store_true", help="兼容模式：打开旧式完整桌面窗口")
@@ -2755,7 +2841,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
 def run_headless(settings: Settings) -> int:
     service = MonitorService(settings, callback=print_cycle)
     service.start()
-    print(f"节点监控已启动：{settings.controller}，间隔 {settings.interval_seconds}s；按 Ctrl+C 停止")
+    print(f"Clash 节点监控已启动：{settings.controller}，间隔 {settings.interval_seconds}s；按 Ctrl+C 停止")
     try:
         while True:
             time.sleep(1)
@@ -2799,7 +2885,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 2
 
     if args.server or not args.window:
-        return run_server(settings, args.config, args.port)
+        return run_server(
+            settings,
+            args.config,
+            args.port,
+            open_browser=args.open_browser or getattr(sys, "frozen", False),
+        )
 
     try:
         app = DashboardApp(settings)

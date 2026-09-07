@@ -28,7 +28,46 @@
     historyLoading: false,
     historyToken: 0,
     drag: null,
+    connectionState: "checking",
+    connectionMessage: "正在自动检测本机 Clash",
   };
+
+  const THEME_KEY = "clash-node-monitor-theme";
+
+  function applyTheme(theme, persist = true) {
+    const next = theme === "light" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    const toggle = $("#themeToggle");
+    const use = toggle?.querySelector("use");
+    const label = toggle?.querySelector("span");
+    if (use) use.setAttribute("href", next === "light" ? "#icon-moon" : "#icon-sun");
+    if (label) label.textContent = next === "light" ? "夜间模式" : "白天模式";
+    if (toggle) {
+      const description = next === "light" ? "切换到夜间模式" : "切换到白天模式";
+      toggle.title = description;
+      toggle.setAttribute("aria-label", description);
+    }
+    const meta = $("#themeColorMeta");
+    if (meta) meta.content = next === "light" ? "#f4f6f8" : "#11161c";
+    if (persist) {
+      try {
+        window.localStorage.setItem(THEME_KEY, next);
+      } catch {
+        // The theme still applies when storage is unavailable.
+      }
+    }
+  }
+
+  function initTheme() {
+    let saved = "";
+    try {
+      saved = window.localStorage.getItem(THEME_KEY) || "";
+    } catch {
+      saved = "";
+    }
+    const systemTheme = window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark";
+    applyTheme(saved || systemTheme, false);
+  }
 
   function escapeHtml(value) {
     return String(value ?? "")
@@ -138,7 +177,8 @@
     const settings = currentSettings();
     const fromApi = Array.isArray(state.status?.availableNodes) ? state.status.availableNodes : [];
     const fromSettings = Array.isArray(settings.selectedNodes) ? settings.selectedNodes : [];
-    return Array.from(new Set([...fromApi, ...fromSettings, ...latestRows().map((row) => row.node).filter(Boolean)])).sort(naturalCompare);
+    const fallback = fromApi.length || fromSettings.length ? [] : latestRows().map((row) => row.node).filter(Boolean);
+    return Array.from(new Set([...fromApi, ...fromSettings, ...fallback])).sort(naturalCompare);
   }
 
   function allHistoryNodes() {
@@ -192,7 +232,7 @@
     }
     const blob = await response.blob();
     const disposition = response.headers.get("Content-Disposition") || "";
-    const filename = disposition.match(/filename="([^"]+)"/)?.[1] || `tw-monitor-${state.historyDays}d.csv`;
+    const filename = disposition.match(/filename="([^"]+)"/)?.[1] || `clash-node-monitor-${state.historyDays}d.csv`;
     const rowCount = Number(response.headers.get("X-Export-Row-Count") || 0);
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -229,6 +269,7 @@
     const mapping = {
       "#intervalInput": settings.intervalSeconds,
       "#timeoutInput": settings.timeoutMs,
+      "#controllerInput": settings.controller,
       "#patternInput": settings.nodePattern,
       "#testUrlInput": settings.testUrl,
       "#autoRouteInput": Boolean(settings.autoRoute),
@@ -245,6 +286,8 @@
     });
     state.draftNodes = Array.isArray(settings.selectedNodes) ? [...settings.selectedNodes] : [];
     state.formHydrated = true;
+    const secretHint = $("#secretHint");
+    if (secretHint) secretHint.textContent = settings.hasSecret ? "已保存本机密钥；留空会保持不变。" : "未检测到密钥；如果 Clash 设置了密钥，请在这里填写。";
     renderNodePicker();
   }
 
@@ -284,7 +327,10 @@
     return {
       intervalSeconds: number("#intervalInput", 60),
       timeoutMs: number("#timeoutInput", 5000),
-      nodePattern: $("#patternInput")?.value.trim() || "^TW-\\d+$",
+      controller: $("#controllerInput")?.value.trim() || "",
+      secret: $("#secretInput")?.value.trim() || "",
+      clearSecret: Boolean($("#clearSecretInput")?.checked),
+      nodePattern: $("#patternInput")?.value.trim() || ".*",
       testUrl: $("#testUrlInput")?.value.trim() || "",
       autoRoute: Boolean($("#autoRouteInput")?.checked),
       routeGroup: $("#routeGroupInput")?.value.trim() || "",
@@ -381,6 +427,7 @@
 
   function render() {
     renderServiceState();
+    renderConnectionState();
     renderOverview();
     renderRoute();
     renderControls();
@@ -395,6 +442,34 @@
     const label = $("#railServiceStatus");
     if (dot) dot.dataset.state = state.checking ? "loading" : state.online ? (state.status?.monitor?.inCycle ? "sampling" : state.status?.monitor?.paused ? "paused" : "online") : "offline";
     if (label) label.textContent = state.checking ? "连接中" : state.online ? "在线" : "离线";
+  }
+
+  function renderConnectionState() {
+    const card = $("#connectionCard");
+    const label = $("#connectionStatusLabel");
+    const detail = $("#connectionDetail");
+    if (!card || !label || !detail) return;
+    const settings = currentSettings();
+    const controller = settings.controller || "自动检测";
+    const nodeCount = availableNodes().length;
+    const lastCycle = state.status?.lastCycle;
+    const hasFailure = lastCycle?.status === "error" && !nodeCount;
+    if (state.checking) {
+      state.connectionState = "checking";
+      state.connectionMessage = "正在自动检测本机 Clash";
+    } else if (!state.online) {
+      state.connectionState = "error";
+      state.connectionMessage = "本机监控服务未运行";
+    } else if (state.connectionState === "checking" && nodeCount) {
+      state.connectionState = "ready";
+      state.connectionMessage = `已发现 ${nodeCount} 个可用节点`;
+    } else if (hasFailure && state.connectionState !== "ready") {
+      state.connectionState = "error";
+      state.connectionMessage = lastCycle.message || "无法读取 Clash 节点";
+    }
+    card.dataset.state = state.connectionState;
+    label.textContent = state.connectionState === "ready" ? "Clash 已连接" : state.connectionState === "error" ? "Clash 尚未连接" : "正在自动检测 Clash";
+    detail.textContent = state.connectionState === "ready" ? `${controller} · ${state.connectionMessage}` : `${state.connectionMessage}；可展开高级设置后重新测试。`;
   }
 
   function renderOverview() {
@@ -484,6 +559,7 @@
     $("#exportButton").disabled = !online || busy;
     $("#settingsStatus").textContent = state.settingsDirty ? "有未保存修改" : state.action === "save" ? "正在保存…" : "未修改";
     $("#autoRouteInput").disabled = !online || busy;
+    $("#connectionTestButton").disabled = !online || busy;
   }
 
   function renderNodeTable() {
@@ -704,6 +780,10 @@
   }
 
   function bindEvents() {
+    $("#themeToggle")?.addEventListener("click", () => {
+      applyTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light");
+    });
+
     $$("[data-history-days]").forEach((button) => button.addEventListener("click", () => {
       state.historyDays = Number(button.dataset.historyDays) || 1;
       state.history = null;
@@ -770,6 +850,19 @@
     });
     $("#exportButton")?.addEventListener("click", async () => {
       await runAction("export", downloadCsv);
+    });
+    $("#connectionTestButton")?.addEventListener("click", async () => {
+      await runAction("connection", async () => {
+        const payload = await postJson("/api/connection-test", {
+          controller: $("#controllerInput")?.value.trim() || "",
+          secret: $("#secretInput")?.value.trim() || "",
+        });
+        state.connectionState = "ready";
+        state.connectionMessage = payload.message || `已发现 ${payload.nodeCount || 0} 个可用节点`;
+        state.status = { ...(state.status || {}), availableNodes: payload.availableNodes || [] };
+        render();
+        showToast(state.connectionMessage, "success");
+      });
     });
     $("#pauseButton")?.addEventListener("click", async () => {
       const paused = !Boolean(state.status?.monitor?.paused);
@@ -854,6 +947,11 @@
     try {
       await action();
     } catch (error) {
+      if (name === "connection") {
+        state.connectionState = "error";
+        state.connectionMessage = error.message || "连接测试失败";
+        render();
+      }
       showToast(error.message || "操作失败", "error");
     } finally {
       state.action = "";
@@ -862,6 +960,7 @@
   }
 
   function init() {
+    initTheme();
     bindEvents();
     renderFocusOptions();
     render();

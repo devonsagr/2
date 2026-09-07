@@ -3,9 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#11161c" />
-    <meta name="description" content="本机 Clash / mihomo 节点质量监控。" />
-    <title>节点监控</title>
+    <meta id="themeColorMeta" name="theme-color" content="#11161c" />
+    <meta name="description" content="Clash / mihomo 本机节点质量监控。" />
+    <title>Clash 节点监控</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -26,6 +26,9 @@
       <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
       <symbol id="icon-reset" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.6" /><path d="M4 4v4.6h4.6" /></symbol>
       <symbol id="icon-download" viewBox="0 0 24 24"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14" /></symbol>
+      <symbol id="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5" /><path d="M12 2.5v2M12 19.5v2M4.5 4.5l1.4 1.4M18.1 18.1l1.4 1.4M2.5 12h2M19.5 12h2M4.5 19.5l1.4-1.4M18.1 5.9l1.4-1.4" /></symbol>
+      <symbol id="icon-moon" viewBox="0 0 24 24"><path d="M19.5 15.4A7.8 7.8 0 0 1 8.6 4.5 8.2 8.2 0 1 0 19.5 15.4Z" /></symbol>
+      <symbol id="icon-link" viewBox="0 0 24 24"><path d="m9.5 14.5 5-5M7.2 17.8l-1.1 1.1a3.7 3.7 0 0 1-5.2-5.2l4-4a3.7 3.7 0 0 1 5.2 0M16.8 6.2l1.1-1.1a3.7 3.7 0 1 1 5.2 5.2l-4 4a3.7 3.7 0 0 1-5.2 0" /></symbol>
     </svg>
 
     <div class="app-shell">
@@ -33,8 +36,8 @@
         <div class="brand-lockup">
           <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
           <div>
-            <strong>节点监控</strong>
-            <span>Clash / mihomo</span>
+            <strong>Clash 节点监控</strong>
+            <span>LOCAL NODE MONITOR</span>
           </div>
         </div>
         <nav class="rail-nav">
@@ -57,6 +60,9 @@
           </div>
           <div class="topbar-actions">
             <div class="last-refresh"><span>最近刷新</span><time id="lastRefresh">—</time></div>
+            <button id="themeToggle" class="button button-quiet theme-toggle" type="button" aria-label="切换主题" title="切换主题">
+              <svg class="icon" aria-hidden="true"><use href="#icon-sun"></use></svg><span>白天模式</span>
+            </button>
             <button id="refreshButton" class="button button-primary" type="button" disabled>
               <svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg><span>立即刷新</span>
             </button>
@@ -129,17 +135,30 @@
 
         <section id="settings" class="panel settings-panel">
           <div class="panel-header settings-heading"><div><h2>采样设置</h2><p>调整本机采样和自动路由，不会上传数据。</p></div><button id="loadConfigButton" class="button button-quiet" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg><span>刷新节点清单</span></button></div>
+          <div id="connectionCard" class="connection-card" data-state="checking" role="status" aria-live="polite">
+            <div class="connection-icon"><svg class="icon" aria-hidden="true"><use href="#icon-link"></use></svg></div>
+            <div class="connection-copy"><strong id="connectionStatusLabel">正在自动检测 Clash</strong><span id="connectionDetail">程序会读取本机控制器配置，不会上传密钥或监控数据。</span></div>
+            <button id="connectionTestButton" class="button button-quiet" type="button" disabled><svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg><span>测试连接</span></button>
+          </div>
+          <details class="connection-advanced">
+            <summary>连接高级设置</summary>
+            <div class="connection-fields">
+              <label><span>Clash 控制器地址</span><input id="controllerInput" type="url" placeholder="自动检测，例如 http://127.0.0.1:9097" autocomplete="off" /><small>通常不需要填写；只在自动检测失败时修改。</small></label>
+              <label><span>API 密钥</span><input id="secretInput" type="password" placeholder="留空保持已保存密钥" autocomplete="new-password" /><small id="secretHint">密钥只保存在本机配置，不会显示在页面或上传。</small></label>
+              <div class="secret-clear"><span>密钥操作</span><label class="checkbox-toggle"><input id="clearSecretInput" type="checkbox" /><span></span><b>清除已保存密钥</b></label><small>如果 Clash 没有设置密钥，请保持关闭。</small></div>
+            </div>
+          </details>
           <form id="settingsForm" class="settings-form">
             <div class="settings-grid">
               <label><span>监控间隔（秒）</span><input id="intervalInput" name="intervalSeconds" type="number" min="15" max="3600" step="15" value="60" /><small>每轮完整采样之间的等待时间</small></label>
               <label><span>单节点超时（毫秒）</span><input id="timeoutInput" name="timeoutMs" type="number" min="1000" max="30000" step="500" value="5000" /><small>超时会以断点保留在历史图上</small></label>
-              <label class="settings-wide"><span>自动筛选规则</span><input id="patternInput" name="nodePattern" type="text" value="^TW-\d+$" /><small>默认只选 TW 叶子节点；手选节点会优先于此规则</small></label>
+              <label class="settings-wide"><span>自动筛选规则</span><input id="patternInput" name="nodePattern" type="text" value=".*" /><small>默认监控所有叶子节点；手选节点后只监控勾选项</small></label>
               <label class="settings-wide"><span>延迟探针地址</span><input id="testUrlInput" name="testUrl" type="url" value="http://www.gstatic.com/generate_204" /><small>这是可达性/延迟探针，不代表带宽</small></label>
             </div>
             <div class="route-settings">
               <div class="settings-section-title"><div><h3>自动路由</h3><p>默认关闭；只有明确开启且有绿色候选时才允许改动 Clash 选择。</p></div><label class="checkbox-toggle"><input id="autoRouteInput" type="checkbox" /><span></span><b>允许切换</b></label></div>
               <div class="settings-grid route-grid">
-                <label><span>监控候选组</span><input id="routeGroupInput" type="text" value="TW自动选择" /><small>URLTest 会自动识别实际出站 Selector</small></label>
+                <label><span>监控候选组</span><input id="routeGroupInput" type="text" value="" placeholder="可选，例如：自动选择" /><small>留空只监控；填写后才能启用自动路由</small></label>
                 <label><span>连续异常次数</span><select id="routeAfterInput"><option value="1">1 次</option><option value="2" selected>2 次</option><option value="3">3 次</option><option value="4">4 次</option><option value="5">5 次</option></select><small>橙色延迟达到次数后才切换</small></label>
                 <label><span>切换冷却记录（秒）</span><input id="routeCooldownInput" type="number" min="30" max="3600" step="30" value="300" /><small>只作为说明记录；故障转移不被它拦截</small></label>
                 <label><span>绿色上限（毫秒）</span><input id="warningDelayInput" type="number" min="100" max="10000" step="50" value="800" /><small>不超过此值才算绿色</small></label>
@@ -151,7 +170,7 @@
         </section>
 
         <section id="offlineState" class="offline-state" hidden aria-live="polite"><div class="offline-icon"><svg class="icon" aria-hidden="true"><use href="#icon-wifi"></use></svg></div><div><h2>监控服务不可用</h2><p id="offlineMessage">请先运行 `run_monitor.bat`，再回到此页面。</p></div><button id="retryButton" class="button button-primary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg><span>重新连接</span></button></section>
-        <footer class="app-footer"><span>本机运行 · 默认只监听 127.0.0.1</span><span>延迟探针 ≠ 带宽测速</span></footer>
+        <footer class="app-footer"><span>Clash 节点监控 · 本机运行 · 默认只监听 127.0.0.1</span><span>延迟探针 ≠ 带宽测速</span></footer>
       </main>
     </div>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
