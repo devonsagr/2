@@ -1,5 +1,11 @@
 # 公开版本历史
 
+## 2026-09-07 · Windows EXE 公开分发
+
+- 公开仓库 `main` 已包含源码、公共架构文档、配置模板、测试和 `release/ClashNodeMonitor.exe`。
+- EXE 通过 Git LFS 分块上传，避免普通 Git 大文件推送在网络链路中断；GitHub 直接下载仍提供完整 Windows 可执行文件。
+- 验证证据：19 个 Python 单元测试、Python/JavaScript 语法检查、EXE 本机 API 启动冒烟均通过。
+
 ## 2026-09-07 · Public standalone release
 
 - 将节点监控整理为可独立分发的 Clash/mihomo 本地软件。

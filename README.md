@@ -75,7 +75,7 @@ py clash_node_monitor.py --floating   # 服务已运行时打开桌面浮点
 powershell -ExecutionPolicy Bypass -File .\build_exe.ps1
 ```
 
-构建脚本会安装/使用 PyInstaller，把 `web/` 一起打入 `release/ClashNodeMonitor.exe`。发布前不要把 `monitor_config.json`、API 密钥或 `data/` 数据库放进仓库。
+构建脚本会安装/使用 PyInstaller，把 `web/` 一起打入 `release/ClashNodeMonitor.exe`。仓库中的 EXE 使用 Git LFS 存储；普通用户直接从 GitHub 下载即可，使用 Git 克隆时请确保本机启用了 Git LFS。发布前不要把 `monitor_config.json`、API 密钥或 `data/` 数据库放进仓库。
 
 ## 产品资料
 
