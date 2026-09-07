@@ -1,5 +1,12 @@
 # CODEX_HISTORY
 
+## 2026-09-07：修复独立 Web 资源路径并发布到 GitHub
+
+- 根因：直接打开 `web/index.html` 或从 GitHub 仓库子路径访问时，`/styles.css` 与 `/app.js` 会解析到域名根路径，CSS/JS 加载失败，页面退回浏览器默认样式。
+- 实现：改用相对资源路径；README 明确要求通过 `run_monitor.bat` 或 `py tw_monitor.py --server` 启动本机 API，不把静态仓库页误当成远程监控服务。
+- 验证：真实 loopback 页面重新加载后资源 `styles.css`、`app.js` 均返回 200；JavaScript 语法检查、Python 编译检查和 19 个单元测试全部通过。
+- 发布：提交 `f547752` 已推送至 `https://github.com/devonsagr/2` 的 `main` 分支；未包含真实配置、密钥、SQLite 数据库或缓存目录。
+
 ## 2026-09-01：趋势图默认 30 分钟聚合
 
 - 需求：后台仍按设置的 1 分钟间隔采样和写入 SQLite；趋势图默认改用 1800 秒（30 分钟）聚合，减少多日 SVG 点数和挂后台时的渲染压力；用户仍可手动选择 1 分钟、30 秒等细粒度查看。

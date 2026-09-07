@@ -3,7 +3,7 @@
 ## 项目映射
 
 - 本地工程：`D:\AAAcodex项目\网络监控独立版`
-- Git：未初始化；未获得目标 GitHub 仓库地址前不初始化、不上传
+- Git：`main` 分支；远程仓库为 `https://github.com/devonsagr/2.git`
 - 本地权威文档根：`docs/`，产品与设计合同为根目录 `PRODUCT.md`、`DESIGN.md`
 - 当前路线图：`路线图.md`
 - 当前交接：`当前交接.md`
